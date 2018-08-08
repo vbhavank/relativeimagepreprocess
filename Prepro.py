@@ -6,100 +6,71 @@ from random import randint
 import glob
 from PIL import Image
 import random
-def extract_ch(flag,synt,real_image_stack,i): #This function should be recursively ideally
-    rMin=[]
-    sMin=[]
-    rMax=[]
-    sMax=[]
-    sMean=[]
-    rMean=[]
-    ImN=[]
-    num=randint(0, flag-1)
-    stemp=synt[:,:,i]
-    rtemp=real_image_stack[num,:,:,i]
-    sMean=(np.mean(stemp.flatten()))
-    rMean=(np.mean(rtemp.flatten()))
-    if((abs(sMean-rMean)<=0.4)):#thresholding mean for retrieving as similar looking images as possible
-        print('enter if')
-        rMin.append(min(rtemp.flatten()))
-        sMin.append(min(stemp.flatten()))
-        rMax.append(max(rtemp.flatten()))
-        sMax.append(max(stemp.flatten()))  
-    return rMin,sMin,rMax,sMax,rMean,sMean
-def min_max_allscale(filename2,real_image_stack,flag):
-    syn=(scipy.misc.imread(filename2))
+import os 
 
-    synt=cv2.normalize(syn.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+def final_allscale(synt,real_image_stack,flag,thres):
 
-    rMin=[]
-    sMin=[]
-    rMax=[]
-    sMax=[]
-    sMean=[]
-    rMean=[]
-    ImN=[]
-    cnt=0
-    while(np.shape(rMin)[0]!=3 and np.shape(sMin)[0]!=3 and np.shape(rMax)[0]!=3 and np.shape(sMax)[0]!=3 and cnt<=1993):#Change cnt to the max no. of synthetic images: If not sure set to the largest value possible   
-            for i in range(3):
+	rMin=[]
+	sMin=[]
+	rMax=[]
+	sMax=[]
+	sMean=[]
+	rMean=[]
+	ImN=[]
+	cnt=0
+	for i in range(3):
+		while(np.shape(rMin)[0]!=3 and np.shape(sMin)[0]!=3 and np.shape(rMax)[0]!=3 and np.shape(sMax)[0]!=3 or cnt>=5):#0.3   
+			num=randint(0, flag-1)
+			cnt=cnt+1
+			stemp=synt[:,:,i]
+			rtemp=real_image_stack[num,:,:,i]
+			sMean=(np.mean(stemp.flatten()))
+			rMean=(np.mean(rtemp.flatten()))
+			if(abs(sMean-rMean)<=thres):
+				rMin.append(min(rtemp.flatten()))
+				sMin.append(min(stemp.flatten()))
+				rMax.append(max(rtemp.flatten()))
+				sMax.append(max(stemp.flatten()))  
 
-                num=randint(0, flag-1)
-                stemp=synt[:,:,i]
-                rtemp=real_image_stack[num,:,:,i]
-                sMean=(np.mean(stemp.flatten()))
-                rMean=(np.mean(rtemp.flatten()))
-                if((abs(sMean-rMean)<=0.4)): #adjust threshold to your needs
-                    rMin.append(min(rtemp.flatten()))
-                    sMin.append(min(stemp.flatten()))
-                    rMax.append(max(rtemp.flatten()))
-                    sMax.append(max(stemp.flatten()))  
-                while(~((abs(sMean-rMean)<=0.4) and cnt<=5)):
-                    cnt=cnt+1
-                    rMin,sMin,rMax,sMax,rMean,sMean=extract_ch(flag,synt,real_image_stack,i)
-                    break
-            else:
-                return synt
-    if(np.shape(rMin)[0]==3 and np.shape(sMin)[0]==3 and np.shape(rMax)[0]==3 and np.shape(sMax)[0]==3):
-        for j in range(3):
-            #Shift distribution to zero
-            temp1=(synt[:,:,j]-sMin[j])
-            #scale max of the real-min of the real
-            temp2=temp1*((rMax[j]-rMin[j])/(sMax[j]-sMin[j]))
-            # Add the minimum value from the real imagery
-            temp3=temp2+rMin[j]
-            #Converting scale.
-            #cvuint8 = cv2.convertScaleAbs(temp3)
-            ImN.append(temp3)
-        norma=np.moveaxis(ImN, 0, 2)
-        return norma
+			if(cnt>=5):
+				norma=synt
+				break
+				print('Could not pre-process the input')
 
-#For testing on individual chips
-filesyn='/link/to/syn'#Link to 'A' synthetic chip
-syn=(scipy.misc.imread(filesyn))
-real_image_stack = np.stack([np.expand_dims(((Image.open(filename).resize((55,35)))),-1) for filename in glob.glob('link/to/real/*.png')],0) 	#Change link to the folder containing 'ALL' the real imagery you have for reference
-real_image_stack=np.squeeze(real_image_stack)	#My data had unwanted channels i.e [6322,224,224,3,1] ,comment out incase your data imports in the form [6322,224,224,3]
-real_image_stack=cv2.normalize(real_image_stack.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
-flag=(np.shape(real_image_stack))[0]
-test=min_max_allscale(filesyn,real_image_stack,flag)
+	if(np.shape(rMin)[0]==3 and np.shape(sMin)[0]==3 and np.shape(rMax)[0]==3 and np.shape(sMax)[0]==3):
+		for j in range(3):
+			#Shift distribution to zero
+			temp1=(synt[:,:,j]-sMin[j])
+			#scale max of the real-min of the real
+			temp2=temp1*((rMax[j]-rMin[j])/(sMax[j]-sMin[j]))
+			# Add the minimum value from the real imagery
+			temp3=temp2+rMin[j]
+			#Converting scale.
+			ImN.append(temp3)
+		norma=np.moveaxis(ImN, 0, 2)
 
-plt.figure()
-plt.axis('off')
-plt.imshow(test)
-plt.figure()
-plt.axis('off')
-plt.imshow(syn)
+	return norma
 
+def main():
 
-#For processing a complete dataset in one go
-"""
-real_image_stack = np.stack([np.expand_dims(((Image.open(filename).resize((55,35)))),-1) for filename in glob.glob('/link/to/real/*.png')],0)
-real_image_stack=np.squeeze(real_image_stack)
-real_image_stack=cv2.normalize(real_image_stack.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
-flag=(np.shape(real_image_stack))[0]
-name=0
-for filename in glob.glob('/link/to/syn/directory/*.PNG'):
-    normali=min_max_allscale(filename,real_image_stack,flag)
-    scipy.misc.imsave('/link/to/save/dir/chip{}.png'.format(name),  normali)
-    name=name+1
-    print(name)
-print(name)
-"""
+	name=0
+	for filename in glob.glob(os.path.join(synthetic_path,'*.PNG')):
+		syn=scipy.misc.imread(filename)
+		na=(filename.split("/")[-1])
+		synt=cv2.normalize(syn.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+		normali=final_allscale(synt,real_image_stack,flag,thres)
+		scipy.misc.imsave('/home/path/to/target/{}'.format(na),  normali)
+		name=name+1
+	print('Preprocessed {} chips'.format(name))
+
+if __name__ == "__main__":
+
+	thres=0.05 #Change threshold accordingly
+	real_path='/home/path/to/real/*.png' #Path to real images for comparing
+	synthetic_path='/home/Path/to/synthetic' #Path to simulated imagery for preprocessing
+	real_image_stack = np.stack([np.expand_dims(((Image.open(filename).resize((80,80)))),-1) for filename in glob.glob(real_path)],0)
+	real_image_stack=np.squeeze(real_image_stack)
+	real_image_stack=cv2.normalize(real_image_stack.astype('float'), None, 0.0, 1.0, cv2.NORM_MINMAX)
+	flag=(np.shape(real_image_stack))[0]
+
+	main()
